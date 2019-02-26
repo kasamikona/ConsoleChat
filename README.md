@@ -1,2 +1,39 @@
 # ConsoleChat
-Command-Line Chat Node Module for Discord Bots
+Command-Line Chat Node Module for Discord.js Bots
+
+Features:
+* Connect to and chat with any Discord server the bot is a member of via the command line
+* Send and receive text messages
+* Supports emojis (:emoji_name:) and user tagging (by tag or nickname)
+* Displays user nicknames with role colors (as accurate as the console window allows)
+* Adds message timestamps
+* Very basic command support (type /help to see a list of commands)
+
+Basic setup (in your main bot script):
+```javascript
+const Discord = require('discord.js')
+const client = new Discord.Client({disableEveryone: true})
+const consoleChat = require('./consoleChat.js')
+...
+
+client.on('ready', () => {
+    ...
+    consoleChat.startConsoleInput(client)
+    ...
+})
+
+client.on('message', function(message) {
+    consoleChat.onMessage(message)
+    ...
+})
+
+client.login(YOUR_SECRET_TOKEN)
+...
+```
+
+Additional configuration functions:
+* consoleChat.setIgnoreBots(ignore): Whether to ignore bot messages (default: false)
+* consoleChat.setUseTimestamps(use): Whether to add timestamps to messages (default: true)
+* consoleChat.setUseMessageGap(use): Whether to add blank lines between messages (default: true)
+* consoleChat.setUseBotBadges(use): Whether to display a blue 'BOT' badge next to bot names (default: true)
+* consoleChat.setStopFunction(function): Specify a function to run for the '/stop' command (default: process.exit)
