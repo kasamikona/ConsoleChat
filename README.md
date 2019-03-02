@@ -3,11 +3,10 @@ Command-Line Chat Node Module for Discord.js Bots
 
 Features:
 * Connect to and chat with any Discord server the bot is a member of via the command line
-* Send and receive text messages
+* Send and receive text messages, including basic info for attachments and embeds
+* Basic command support (type /help to see a list of commands)
 * Supports emojis (:emoji_name:) and user tagging (by tag or nickname)
-* Displays user nicknames with role colors (as accurate as the console window allows)
-* Adds message timestamps
-* Very basic command support (type /help to see a list of commands)
+* Colors user nicknames by role colors (as accurate as the console window allows)
 
 Basic setup (in your main bot script):
 ```javascript
@@ -34,6 +33,6 @@ client.login(YOUR_SECRET_TOKEN)
 Additional configuration functions:
 * consoleChat.setIgnoreBots(ignore): Whether to ignore bot messages (default: false)
 * consoleChat.setUseTimestamps(use): Whether to add timestamps to messages (default: true)
-* consoleChat.setUseMessageGap(use): Whether to add blank lines between messages (default: true)
 * consoleChat.setUseBotBadges(use): Whether to display a blue 'BOT' badge next to bot names (default: true)
 * consoleChat.setStopFunction(function): Specify a function to run for the '/stop' command (default: process.exit)
+* consoleChat.setPromptPrefix(prefix): Specify a prompt prefix string (default: "> ")
