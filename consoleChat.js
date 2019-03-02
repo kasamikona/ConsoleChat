@@ -17,7 +17,7 @@ var promptPrefix = "> "
 
 var client
 
-const versionString = "v1.2.0"
+const versionString = "v1.2.1"
 
 module.exports.setIgnoreBots = (ignore=true) => {ignoreBots = ignore}
 module.exports.setUseTimestamps = (use=true) => {useTimestamps = use}
@@ -35,7 +35,7 @@ module.exports.setChannel = setChannel
 module.exports.onMessage = (message) => {
     if(!consoleMsgChannel) return
     if(message.channel.id != consoleMsgChannel.id) return
-    if(!((message.author.bot && ignoreBots) || message.author.id == client.user.id)) {
+    if(!(message.author.bot && ignoreBots)){
         saveHomeCursor()
         outputMessageMember(message.member)
         outputMessageCleanContent(message.cleanContent)
@@ -77,13 +77,10 @@ function outputMessageCleanContent(cleanContent) {
 function sendMessage(inputLine) {
     if(!consoleMsgChannel) return
     erasePreviousLinesForInput(inputLine)
-    outputMessageMember(consoleMsgChannel.guild.member(client.user))
-    outputMessageCleanContent(inputLine)
     consoleMsgChannel.send(inputLine).then(message => lastMessage = message).catch(lastMessage = null)
 }
 
 function erasePreviousLinesForInput(input) {
-    process.title = lastInputHeight
     readline.cursorTo(process.stdout, 0)
     readline.moveCursor(process.stdout, 0, -lastInputHeight)
     readline.clearScreenDown(process.stdout)
