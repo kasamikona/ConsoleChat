@@ -1,52 +1,102 @@
+var readline = require('readline');
+
 var consoleMsgChannel
-var stdin
+var mainInput
+var mainInputSuspended = true
+var lastInputHistory // hacky method for maintaining history, may break if readline updates
+var lastCursorPos
+var lastDisplayedUserId = null
+var lastMessage = null
+var lastInputHeight
 
 var ignoreBots = false
 var useTimestamps = true
-var useMessageGap = true
 var useBotBadges = true
 var stopFunction = process.exit
+var promptPrefix = "> "
 
 var client
 
-const versionString = "v1.1"
+const versionString = "v1.2.0"
 
 module.exports.setIgnoreBots = (ignore=true) => {ignoreBots = ignore}
 module.exports.setUseTimestamps = (use=true) => {useTimestamps = use}
-module.exports.setUseMessageGap = (use=true) => {useMessageGap = use}
 module.exports.setUseBotBadges = (use=true) => {useBotBadges = use}
-module.exports.setStopFunction = (f) => {stopFunction = f}
+module.exports.setStopFunction = (f=process.exit) => {stopFunction = f}
+module.exports.setPromptPrefix = (p="> ") => {promptPrefix = p}
 
-function setChannel(channel) {consoleMsgChannel = channel}
+function setChannel(channel) {
+    consoleMsgChannel = channel
+    lastDisplayedUserId = null
+    //lastMessage = null
+}
 module.exports.setChannel = setChannel
 
 module.exports.onMessage = (message) => {
-    if(message.author.bot && ignoreBots) return
-    if (consoleMsgChannel) if (message.channel.id == consoleMsgChannel.id) {
-        if(useMessageGap) console.log()
-        var timestampString = ""
-        if(useTimestamps) timestampString = "["+((new Date()).toTimeString().substring(0,8))+"] "
-        var badgeString = ""
-        if(useBotBadges) if(message.author.bot) badgeString = consoleBotBadge()
-        console.log(timestampString+consoleColor(colorForMember(message.member))+message.member.displayName+consoleColorReset()+badgeString+": "+message.cleanContent)
+    if(!consoleMsgChannel) return
+    if(message.channel.id != consoleMsgChannel.id) return
+    if(!((message.author.bot && ignoreBots) || message.author.id == client.user.id)) {
+        saveHomeCursor()
+        outputMessageMember(message.member)
+        outputMessageCleanContent(message.cleanContent)
         message.attachments.forEach((file) => {
-            console.log(consoleColor(0)+" -> File "+file.url+" "+consoleColorReset())
+            outputMessageSpecial("File",file.url)
         })
         message.embeds.forEach((embed) => {
-            console.log(consoleColor(0)+" -> Embed "+embed.title+" "+consoleColorReset())
+            outputMessageSpecial("Embed",embed.title)
         })
+        restoreCursor()
     }
+}
+
+function outputMessageMember(member) {
+    if(lastDisplayedUserId != member.user.id){
+        var timeString = ""
+        if(useTimestamps) timeString += " ("+((new Date()).toTimeString().substring(0,8))+")"
+        var badgeString = ""
+        if(useBotBadges && member.user.bot) badgeString = consoleBotBadge()
+        var newUserString = `\n${consoleColorForMember(member)+member.displayName+consoleColorReset()}${badgeString}${timeString}:`
+        console.log(newUserString)
+        lastDisplayedUserId = member.user.id
+    }
+}
+
+function outputMessageSpecial(type, detail){
+    var detailWithColon = detail ? (": "+detail) : ""
+    console.log(`${consoleColor(0)} -> ${type}${detailWithColon} ${consoleColorReset()}`)
+}
+
+function outputMessageDelete(){
+    outputMessageSpecial("Deleted previous message")
+}
+
+function outputMessageCleanContent(cleanContent) {
+    if(cleanContent && cleanContent.trim().length>0) console.log(cleanContent)
+}
+
+function sendMessage(inputLine) {
+    if(!consoleMsgChannel) return
+    erasePreviousLinesForInput(inputLine)
+    outputMessageMember(consoleMsgChannel.guild.member(client.user))
+    outputMessageCleanContent(inputLine)
+    consoleMsgChannel.send(inputLine).then(message => lastMessage = message).catch(lastMessage = null)
+}
+
+function erasePreviousLinesForInput(input) {
+    process.title = lastInputHeight
+    readline.cursorTo(process.stdout, 0)
+    readline.moveCursor(process.stdout, 0, -lastInputHeight)
+    readline.clearScreenDown(process.stdout)
 }
 
 function consoleBotBadge(){
     return " \x1b[0;1;37;44;38;5;15;48;5;62;38;2;255;255;255;48;2;95;95;215mBOT"+consoleColorReset()
 }
 
-function colorForMember(member){
+function consoleColorForMember(member){
     var c = member.displayColor
-    if(!c) return 16777215
-    if(c<=0) return 16777215
-    return c;
+    if(!c || c<=0) c = 16777215
+    return consoleColor(c);
 }
 
 function consoleColor(color=16777215){
@@ -65,9 +115,6 @@ function consoleColor(color=16777215){
     }
     // Add 4bit approximation and enable invert if too dark
     var returnValue = "\x1b["+((minDiffIndex==0)?"0;1;7":(((minDiffIndex>=8)?"1;3":"0;3")+(minDiffIndex&7)))+"m"
-    // GAMMA CORRECTION
-    //var gamma = 1.0
-    //rgb=[Math.round(Math.pow(rgb[0]/255,gamma)*255),Math.round(Math.pow(rgb[1]/255,gamma)*255),Math.round(Math.pow(rgb[2]/255,gamma)*255)]
     // Set colors for dark text
     var cf8=16+(36*Math.round(rgb[0]/51))+(6*Math.round(rgb[1]/51))+Math.round(rgb[2]/51)
     var cb8=0
@@ -94,87 +141,99 @@ module.exports.startConsoleInput = (discordClient) => {
     console.log("Running ConsoleChat.js "+versionString)
     client = discordClient
     if(!stopFunction) stopFunction = process.exit
-    stdin = process.openStdin()
-    stdin.addListener("data", function(d) {
-        var cmsg = d.toString().trimRight()
-        if(cmsg.startsWith("/")) {
-            var args = cmsg.substring(1).split(" ")
-            var command = args.shift().toLowerCase()
-            if(command == "channel") {
-                var serverArg = args[0]
-                var channelArg = args[1]
-                if(args.length<1 || args.length>2) {
-                    console.log()
-                    console.log("Syntax: \"/channel <server name|id> [channel|id]\"\n  Replace spaces with _ in server name.")
-                    console.log()
-                    return
-                }
-                var servers = client.guilds
-                server = servers.find(s => s.id === serverArg)
-                if(!server) server = servers.find(s => s.name.toLowerCase() === serverArg.toLowerCase().replace("_"," "))
-                if(!server) {
-                    console.log()
-                    console.log("Server "+serverArg+" not found.")
-                    console.log()
-                    return
-                }
-                var channels = server.channels.filter(c => c.type === "text")
-                var channel
-                if(channelArg) {
-                    channel = channels.find(c => c.id === channelArg)
-                    if(!channel) channel = channels.find(c => c.name === channelArg.toLowerCase())
-                } else {
-                    channel = channels.find(c => c.name === "general")
-                }
-                if(!channel) {
-                    console.log()
-                    console.log("Channel "+channelArg+" not found.")
-                    console.log()
-                    return
-                }
-                setChannel(channel)
-                console.log()
-                console.log("Connected console to " + server.name + " #" + channel.name)
-                console.log()
-            } else if(command == "stop") {
-                stopFunction()
-            } else if(command == "cls") {
-                console.clear()
-            } else if(command == "help") {
-                console.log()
-                console.log("ConsoleChat Help")
-                console.log("  Messages starting with / are treated as a command.")
-                console.log("  Anything else will be sent to the connected channel.")
-                console.log("Command List:")
-                console.log("  /help: Display this message")
-                console.log("  /channel <server name|id> [channel|id]: Connect to a channel.\n    Replace spaces with _ in server name.")
-                console.log("  /cls: Clear the screen.")
-                console.log("  /stop: Stop the bot.")
-                console.log()
-            } else {
-                console.log()
-                console.log("Unknown command! Type /help for a list of commands.")
-                console.log()
-            }
-        } else {
-            if(consoleMsgChannel) {
-                const filteredMessage = cmsg.trim().replace(/(@\S+)/g, (match, num) => {
-                    var member = getUserForTag(match.substring(1), consoleMsgChannel.guild)
-                    if(member) return member.toString()
-                    return match
-                }).replace(/(:\S+:)/g, (match, num) => {
-                    var emoji = getEmojiForName(match, consoleMsgChannel.guild)
-                    if(emoji) return emoji.toString()
-                    return match
-                })
-                if(filteredMessage.length > 0) consoleMsgChannel.send(filteredMessage)
-            } else {
-                console.log()
-                console.log("You are not connected to any channel! Use the /channel command to connect.")
-                console.log()
-            }
-        }
+    mainInputLoop()
+}
+
+function mainInputLoop() {
+    mainInputSuspended = false
+    mainInput = readline.createInterface({input:process.stdin,output:process.stdout,prompt:promptPrefix})
+    if(lastInputHistory){
+        // HACKY, TODO: find a better way of doing this if possible
+        mainInput.history = lastInputHistory.history
+        mainInput.historyIndex = lastInputHistory.historyIndex
+        lastInputHistory = null
+    }
+    mainInput.on("line", (data) => {
+        if(mainInputSuspended) return
+        mainInputSuspended = true
+        lastInputHistory = {history:mainInput.history,historyIndex:mainInput.historyIndex}
+        lastInputHeight = mainInput._getDisplayPos(mainInput._prompt+data).rows+1
+        mainInput.close()
+        var waiting = processCommand(data)
+        if(!waiting) mainInputLoop()
     })
+    mainInput.on("close", () => {
+        if(!mainInputSuspended) stopFunction()
+    })
+    mainInput.prompt()
+}
+
+function saveHomeCursor() {
+    if(!mainInputSuspended){
+        // Get/save cursor info
+        var cursor = mainInput.cursor
+        var pos = mainInput._getCursorPos()
+        lastCursorPos = {cursor:cursor,pos:pos}
+        // Re-prompt to jump to start of line quickly
+        // TODO: Set empty prompt and save/clear line info?
+        mainInput.prompt()
+        // Move to start of line
+        readline.cursorTo(process.stdout, 0)
+        // Clear screen ready for message
+        readline.clearScreenDown(process.stdout)
+    }
+}
+
+function restoreCursor() {
+    if(!mainInputSuspended){
+        // Load cursor info
+        var cursor = lastCursorPos.cursor
+        var pos = lastCursorPos.pos
+        // TODO: Load saved line info?
+        // Re-prompt to display line info
+        mainInput.prompt()
+        // Restore cursor info
+        readline.cursorTo(process.stdout, 0)
+        readline.moveCursor(process.stdout, pos.cols, pos.rows)
+        mainInput.cursor = cursor
+    }
+}
+
+function filterTagsAndEmoji(message) {
+    return message.trim().replace(/(@\S+)/g, (match, num) => {
+        var member = getUserForTag(match.substring(1), consoleMsgChannel.guild)
+        if(member) return member.toString()
+        return match
+    }).replace(/(:\S+:)/g, (match, num) => {
+        var emoji = getEmojiForName(match, consoleMsgChannel.guild)
+        if(emoji) return emoji.toString()
+        return match
+    })
+}
+
+function getServer(input) {
+    var server = client.guilds.find(s => s.id == input)
+    if(!server) server = client.guilds.find(s => s.name.toLowerCase() == input.toLowerCase().replace("_"," "))
+    return server
+}
+
+function getChannel(server, input, fallbackDefault) {
+    var channels = getAllChannels(server)
+    var channel
+    if(input) {
+        inputFilt = input.replace(/^#/,"")
+        channel = channels.find(c => c.id === inputFilt)
+        if(!channel) channel = channels.find(c => c.name == inputFilt.toLowerCase())
+    }
+    if(fallbackDefault){
+        if(!channel) channel = channels.find(c => c.name == "general")
+        // TODO: Get default channel if #general doesn't exist
+    }
+    return channel
+}
+
+function getAllChannels(server) {
+    return server.channels.filter(c => c.type === "text")
 }
 
 function getUserForTag(tag, server) {
@@ -193,4 +252,144 @@ function getEmojiForName(name, server) {
     emoji = server.emojis.find(e => e.name === fname)
     //if(!emoji) emoji = client.emojis.find(e => e.name === fname)
     return emoji
+}
+
+function processCommand(d) {
+    var cmsg = d.toString().trimRight()
+    if(cmsg.startsWith("/")) {
+        var cmsgWithoutPrefix = cmsg.substring("/".length)
+        var args = cmsgWithoutPrefix.split(" ")
+        var command = args.shift().toLowerCase()
+        var argsJoined
+        if(args.length > 0) argsJoined = cmsgWithoutPrefix.substring(command.length).trim()
+        if(command == "channel") {
+            if(!args.length == 1) {
+                console.log("Syntax: \"/" + command + " <channel>\"")
+                return
+            }
+            if(!consoleMsgChannel){
+                console.log("You are not connected to any server! Use /server to connect")
+                return
+            }
+            var channelArg = args[0]
+            var channel = getChannel(consoleMsgChannel.guild, channelArg)
+            if(!channel) {
+                console.log("Channel \""+channelArg+"\" not found")
+                return
+            }
+            setChannel(channel)
+            console.log("Moved to #" + channel.name+"")
+        } else if(command == "server" || command == "guild") {
+            var serverArg = argsJoined
+            if(!serverArg) {
+                console.log("Syntax: \"/" + command + " <server>\"")
+                return
+            }
+            var server = getServer(serverArg)
+            if(!server) {
+                console.log("Server \""+serverArg+"\" not found")
+                return
+            }
+            var channelInput = readline.createInterface({input:process.stdin,output:process.stdout,prompt:"Channel (leave blank for default): "})
+            channelInput.prompt()
+            var channelInputFinished
+            channelInput.on("line", (channelArg) => {
+                channelInputFinished = true
+                channelInput.close()
+                if(!channelArg) channelArg = ""
+                var channel = consoleMsgChannel
+                channel = getChannel(server, channelArg, true)
+                if(!channel) {
+                    if(channelArg.trim() != "") console.log("Channel \""+channelArg+"\" not found")
+                    else console.log("Default channel not available")
+                    mainInputLoop()
+                    return
+                }
+                setChannel(channel)
+                console.log("Joined "+server.name+" / #" + channel.name)
+                mainInputLoop()
+            })
+            channelInput.on("close", () => {
+                if(!channelInputFinished) stopFunction()
+            })
+            return true // waiting
+        } else if(command == "listservers" || command == "listguilds") {
+            console.log("Available servers:")
+            client.guilds.forEach(server => console.log("  "+server.name))
+        } else if(command == "listchannels") {
+            var serverArg = argsJoined
+            var server
+            if(args.length > 0){
+                var server = getServer(serverArg)
+                if(!server) {
+                    console.log("Server \""+serverArg+"\" not found")
+                    return
+                }
+            } else {
+                server = consoleMsgChannel.guild
+                if(!server) {
+                    console.log("You are not connected to any server! Use /server to connect")
+                    return
+                }
+            }
+            var channels = getAllChannels(server)
+            console.log("Available channels for "+(args.length > 0?"server "+server.name:"current server")+":")
+            channels.forEach(channel => console.log("  #"+channel.name))
+        } else if(command == "stop") {
+            stopFunction()
+        } else if(command == "cls") {
+            console.clear()
+        } else if(command == "help") {
+            console.log("ConsoleChat "+versionString+" Help")
+            console.log("  Messages starting with / are treated as a command")
+            console.log("  Anything else will be sent to the connected channel")
+            console.log("Command List:")
+            console.log("  /help: Display this message")
+            console.log("  /server <server>: Connect to an available server (alias /guild)")
+            console.log("  /channel <channel>: Connect to a different channel on the current server")
+            console.log("  /listservers: List all available servers (alias /listguilds)")
+            console.log("  /listchannels [server]: List channels on an available server or the current server")
+            console.log("  /deauth [server]: Deauthorize the bot an available server or the current server")
+            console.log("  /delete: Delete the previously sent message (alias /del)")
+            console.log("  /cls: Clear the screen")
+            console.log("  /stop: Stop the bot")
+        } else if(command == "delete" || command == "del") {
+            if(lastMessage) {
+                lastMessage.delete()
+                lastMessage = null
+                outputMessageDelete()
+            } else {
+                console.log("No message available to delete")
+            }
+        } else if(command == "deauth") {
+            var serverArg = argsJoined
+            var server
+            if(serverArg) {
+                server = getServer(serverArg)
+            } else {
+                if(!consoleMsgChannel) {
+                    console.log("You are not connected to any server! Use /server to connect")
+                    return
+                }
+                server = consoleMsgChannel.guild
+            }
+            if(!server) {
+                console.log("Server "+serverArg+" not found")
+                return
+            }
+            var sameServer = (server.id == consoleMsgChannel.guild.id)
+            if(sameServer) consoleMsgChannel = null
+            server.leave()
+            console.log("Deauthorized from server "+server.name)
+        } else {
+            console.log("Unknown command! Type /help for a list of commands")
+        }
+    } else {
+        if(consoleMsgChannel) {
+            const filteredMessage = filterTagsAndEmoji(cmsg)
+            if(filteredMessage.length > 0) sendMessage(filteredMessage)
+        } else {
+            console.log("You are not connected to any channel! Use /channel to connect")
+        }
+    }
 }
