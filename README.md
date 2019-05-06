@@ -30,9 +30,16 @@ client.login(YOUR_SECRET_TOKEN)
 ...
 ```
 
+Anywhere you would use `console.log(value)`:
+```javascript
+...
+consoleChat.println(value)
+...
+```
+
 Additional configuration functions:
-* consoleChat.setIgnoreBots(ignore): Whether to ignore bot messages (default: false)
-* consoleChat.setUseTimestamps(use): Whether to add timestamps to messages (default: true)
-* consoleChat.setUseBotBadges(use): Whether to display a blue 'BOT' badge next to bot names (default: true)
-* consoleChat.setStopFunction(function): Specify a function to run for the '/stop' command (default: process.exit)
-* consoleChat.setPromptPrefix(prefix): Specify a prompt prefix string (default: "> ")
+* consoleChat.setIgnoreBots(ignore): Whether to ignore bot messages (default: `false`)
+* consoleChat.setUseTimestamps(use): Whether to add timestamps to messages (default: `true`)
+* consoleChat.setUseBotBadges(use): Whether to display a blue 'BOT' badge next to bot names (default: `true`)
+* consoleChat.setStopFunction(function): Specify a function to run for the '/stop' command (default: `process.exit()`)
+* consoleChat.setPromptPrefix(prefix): Specify a prompt prefix string (default: `"> "`)
