@@ -17,7 +17,7 @@ var promptPrefix = "> "
 
 var client
 
-const versionString = "v1.2.1"
+const versionString = "v1.2.2"
 
 module.exports.setIgnoreBots = (ignore=true) => {ignoreBots = ignore}
 module.exports.setUseTimestamps = (use=true) => {useTimestamps = use}
@@ -49,6 +49,20 @@ module.exports.onMessage = (message) => {
     }
 }
 
+module.exports.hidePrompt = () => {
+	saveHomeCursor()
+}
+
+module.exports.showPrompt = () => {
+	restoreCursor()
+}
+
+module.exports.println = (message) => {
+	saveHomeCursor()
+	console.log(message)
+	restoreCursor()
+}
+
 function outputMessageMember(member) {
     if(lastDisplayedUserId != member.user.id){
         var timeString = ""
@@ -77,7 +91,10 @@ function outputMessageCleanContent(cleanContent) {
 function sendMessage(inputLine) {
     if(!consoleMsgChannel) return
     erasePreviousLinesForInput(inputLine)
-    consoleMsgChannel.send(inputLine).then(message => lastMessage = message).catch(lastMessage = null)
+    consoleMsgChannel.send(inputLine).then(message => lastMessage = message).catch(() => {
+        lastMessage = null
+        console.log("\x1b[0;1;31mFailed to send message." + consoleColorReset())
+    })
 }
 
 function erasePreviousLinesForInput(input) {
@@ -135,10 +152,12 @@ function consoleColorReset(){
 }
 
 module.exports.startConsoleInput = (discordClient) => {
-    console.log("Running ConsoleChat.js "+versionString)
+    if(!client) { // First init
+		console.log("Running ConsoleChat.js "+versionString)
+		if(!stopFunction) stopFunction = process.exit
+		mainInputLoop()
+	}
     client = discordClient
-    if(!stopFunction) stopFunction = process.exit
-    mainInputLoop()
 }
 
 function mainInputLoop() {
@@ -198,7 +217,7 @@ function restoreCursor() {
 
 function filterTagsAndEmoji(message) {
     return message.trim().replace(/(@\S+)/g, (match, num) => {
-        var member = getUserForTag(match.substring(1), consoleMsgChannel.guild)
+        var member = getMemberForTag(match.substring(1), consoleMsgChannel.guild)
         if(member) return member.toString()
         return match
     }).replace(/(:\S+:)/g, (match, num) => {
@@ -233,13 +252,22 @@ function getAllChannels(server) {
     return server.channels.filter(c => c.type === "text")
 }
 
-function getUserForTag(tag, server) {
-    var members = server.members.filter(m => m.id != client.user.id)
+function filterNameArgument(arg) {
+    return arg.trim()
+        .replace(/<@\d+>/g, (match, num) => {return match.substring(2,match.length-1)})
+        .replace(/<@!\d+>/g, (match, num) => {return match.substring(3,match.length-1)})
+        .replace(/@\S+/g, (match, num) => {return match.substring(1)})
+}
+
+function getMemberForTag(tag, server) {
+    var members = server.members
     var member
-    member = members.find(m => m.user.tag === tag) // Get full tag match
-    if(!member) member = members.find(m => m.user.tag.toLowerCase().startsWith(tag.toLowerCase())) // Get first partial tag match
-    if(!member) member = members.find(m => m.displayName === tag) // Get full display name match
-    if(!member) member = members.find(m => m.displayName.toLowerCase().startsWith(tag.toLowerCase())) // Get first partial display name match
+    member = members.find(m => m.user.tag == tag) // Match full tag
+    if(!member) member = members.find(m => m.user.id == tag) // Match full id
+    if(!member) member = members.find(m => m.displayName == tag) // Match full display name
+    if(!member) member = members.find(m => m.user.tag.toLowerCase().startsWith(tag.toLowerCase())) // Match start of tag (case insensitive)
+    if(!member) member = members.find(m => m.displayName.toLowerCase().startsWith(tag.toLowerCase())) // Match start of display name (case insensitive)
+    if(!member) member = members.find(m => m.displayName.toLowerCase().includes(tag.toLowerCase())) // Match any part of display name (case insensitive) 
     return member
 }
 
@@ -254,6 +282,7 @@ function getEmojiForName(name, server) {
 function processCommand(d) {
     var cmsg = d.toString().trimRight()
     if(cmsg.startsWith("/")) {
+		lastDisplayedUserId = null
         var cmsgWithoutPrefix = cmsg.substring("/".length)
         var args = cmsgWithoutPrefix.split(" ")
         var command = args.shift().toLowerCase()
@@ -261,17 +290,17 @@ function processCommand(d) {
         if(args.length > 0) argsJoined = cmsgWithoutPrefix.substring(command.length).trim()
         if(command == "channel") {
             if(!args.length == 1) {
-                console.log("Syntax: \"/" + command + " <channel>\"")
+                console.log("Syntax: \"/" + command + " <channel>\".")
                 return
             }
             if(!consoleMsgChannel){
-                console.log("You are not connected to any server! Use /server to connect")
+                console.log("You are not connected to any server! Use /server to connect.")
                 return
             }
             var channelArg = args[0]
             var channel = getChannel(consoleMsgChannel.guild, channelArg)
             if(!channel) {
-                console.log("Channel \""+channelArg+"\" not found")
+                console.log("Channel \""+channelArg+"\" not found.")
                 return
             }
             setChannel(channel)
@@ -279,12 +308,12 @@ function processCommand(d) {
         } else if(command == "server" || command == "guild") {
             var serverArg = argsJoined
             if(!serverArg) {
-                console.log("Syntax: \"/" + command + " <server>\"")
+                console.log("Syntax: \"/" + command + " <server>\".")
                 return
             }
             var server = getServer(serverArg)
             if(!server) {
-                console.log("Server \""+serverArg+"\" not found")
+                console.log("Server \""+serverArg+"\" not found.")
                 return
             }
             var channelInput = readline.createInterface({input:process.stdin,output:process.stdout,prompt:"Channel (leave blank for default): "})
@@ -297,13 +326,13 @@ function processCommand(d) {
                 var channel = consoleMsgChannel
                 channel = getChannel(server, channelArg, true)
                 if(!channel) {
-                    if(channelArg.trim() != "") console.log("Channel \""+channelArg+"\" not found")
-                    else console.log("Default channel not available")
+                    if(channelArg.trim() != "") console.log("Channel \""+channelArg+"\" not found.")
+                    else console.log("Default channel not available.")
                     mainInputLoop()
                     return
                 }
                 setChannel(channel)
-                console.log("Joined "+server.name+" / #" + channel.name)
+                console.log(`Joined ${server.name} / #${channel.name}.`)
                 mainInputLoop()
             })
             channelInput.on("close", () => {
@@ -319,15 +348,15 @@ function processCommand(d) {
             if(args.length > 0){
                 var server = getServer(serverArg)
                 if(!server) {
-                    console.log("Server \""+serverArg+"\" not found")
+                    console.log("Server \""+serverArg+"\" not found.")
                     return
                 }
             } else {
-                server = consoleMsgChannel.guild
-                if(!server) {
-                    console.log("You are not connected to any server! Use /server to connect")
+                if(!consoleMsgChannel) {
+                    console.log("You are not connected to any server! Use /server to connect.")
                     return
                 }
+                server = consoleMsgChannel.guild
             }
             var channels = getAllChannels(server)
             console.log("Available channels for "+(args.length > 0?"server "+server.name:"current server")+":")
@@ -342,11 +371,11 @@ function processCommand(d) {
             console.log("  Anything else will be sent to the connected channel")
             console.log("Command List:")
             console.log("  /help: Display this message")
-            console.log("  /server <server>: Connect to an available server (alias /guild)")
+            console.log("  /server <server>: Connect to a joined server (alias /guild)")
             console.log("  /channel <channel>: Connect to a different channel on the current server")
-            console.log("  /listservers: List all available servers (alias /listguilds)")
-            console.log("  /listchannels [server]: List channels on an available server or the current server")
-            console.log("  /deauth [server]: Deauthorize the bot an available server or the current server")
+            console.log("  /listservers: List all authorized servers (alias /listguilds)")
+            console.log("  /listchannels [server]: List channels on a joined server or the current server")
+            console.log("  /deauth [server]: Quit a joined server or the current server")
             console.log("  /delete: Delete the previously sent message (alias /del)")
             console.log("  /cls: Clear the screen")
             console.log("  /stop: Stop the bot")
@@ -356,7 +385,7 @@ function processCommand(d) {
                 lastMessage = null
                 outputMessageDelete()
             } else {
-                console.log("No message available to delete")
+                console.log("No message available to delete.")
             }
         } else if(command == "deauth") {
             var serverArg = argsJoined
@@ -365,28 +394,28 @@ function processCommand(d) {
                 server = getServer(serverArg)
             } else {
                 if(!consoleMsgChannel) {
-                    console.log("You are not connected to any server! Use /server to connect")
+                    console.log("You are not connected to any server! Use /server to connect.")
                     return
                 }
                 server = consoleMsgChannel.guild
             }
             if(!server) {
-                console.log("Server "+serverArg+" not found")
+                console.log("Server "+serverArg+" not found.")
                 return
             }
             var sameServer = (server.id == consoleMsgChannel.guild.id)
             if(sameServer) consoleMsgChannel = null
             server.leave()
-            console.log("Deauthorized from server "+server.name)
+            console.log("Deauthorized from server "+server.name+".")
         } else {
-            console.log("Unknown command! Type /help for a list of commands")
+            console.log("Unknown command! Type /help for a list of commands.")
         }
     } else {
         if(consoleMsgChannel) {
             const filteredMessage = filterTagsAndEmoji(cmsg)
             if(filteredMessage.length > 0) sendMessage(filteredMessage)
         } else {
-            console.log("You are not connected to any channel! Use /channel to connect")
+            console.log("You are not connected to any server! Use /server to connect.")
         }
     }
 }
