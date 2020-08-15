@@ -1,0 +1,12 @@
+v1.2.3:
+- Update for Discord.js v12
+- Fix "failed to send message" error overwriting message
+- Fix input not suspended properly when stopping
+- Fix crash in deauth command when not connected to any server
+- Semicolons and other syntax updates
+- Add more default channel fallbacks if #general not found
+- Add configurable gamma for color conversion
+- Remove poorly supported 24-bit color codes
+
+v1.2.2 and below:
+- not logged
