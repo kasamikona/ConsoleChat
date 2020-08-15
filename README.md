@@ -37,9 +37,15 @@ consoleChat.println(value)
 ...
 ```
 
+Useful functions:
+* consoleChat.setChannel(channel): Change the chat channel e.g. by command (takes a TextChannel object)
+* consoleChat.hidePrompt(): Hide the console prompt to print messages without interruption
+* consoleChat.showPrompt(): Restore from hidePrompt
+
 Additional configuration functions:
 * consoleChat.setIgnoreBots(ignore): Whether to ignore bot messages (default: `false`)
 * consoleChat.setUseTimestamps(use): Whether to add timestamps to messages (default: `true`)
 * consoleChat.setUseBotBadges(use): Whether to display a blue 'BOT' badge next to bot names (default: `true`)
 * consoleChat.setStopFunction(function): Specify a function to run for the '/stop' command (default: `process.exit()`)
 * consoleChat.setPromptPrefix(prefix): Specify a prompt prefix string (default: `"> "`)
+* consoleChat.setGamma(value): Set the gamma value for color calculations (default: `1.2`)
