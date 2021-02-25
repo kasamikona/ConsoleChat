@@ -1,3 +1,5 @@
+# ABANDONED! Please do not use in new projects!
+
 # ConsoleChat
 Command-Line Chat Node Module for Discord.js Bots
 
