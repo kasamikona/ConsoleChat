@@ -1,4 +1,5 @@
 # ABANDONED! Please do not use in new projects!
+You may find a more updated version at Natemo6348's fork (https://github.com/Natemo6348/ConsoleChat).
 
 # ConsoleChat
 Command-Line Chat Node Module for Discord.js Bots
